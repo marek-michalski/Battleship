@@ -1,25 +1,38 @@
 //
-//  CellState.swift
+//  GameLogic.swift
 //  Battleship
 //
 //  Created by Marek Michalski on 28/09/2024.
 //
 
-
 import SwiftUI
 
 // MARK: - Models
 
-enum CellState {
+//enum CellState {
+//    case empty
+//    case ship(Player)
+//    case hit
+//    case miss
+//}
+
+enum CellState: Equatable {
     case empty
-    case ship
+    case ship(Player)
     case hit
     case miss
+}
+
+enum Player {
+    case player1
+    case player2
 }
 
 struct Ship {
     var size: Int
     var positions: [(x: Int, y: Int)]
+    var owner: Player
+    
     var isSunk: Bool {
         positions.allSatisfy { Game.shared.board[$0.x][$0.y] == .hit }
     }
@@ -29,37 +42,28 @@ class Game: ObservableObject {
     static let shared = Game()
     
     @Published var board: [[CellState]]
-    @Published var ships: [Ship]
     @Published var currentPlayer: Player
     @Published var gameOver: Bool = false
     @Published var winner: Player?
     
-    private var playerShips: [Ship] = []
-    private var computerShips: [Ship] = []
-    
-    enum Player {
-        case player1
-        case player2
-        case computer
-    }
+    private var player1Ships: [Ship] = []
+    private var player2Ships: [Ship] = []
     
     init() {
         board = Array(repeating: Array(repeating: .empty, count: 8), count: 8)
-        ships = []
         currentPlayer = .player1
         setupShips()
     }
     
-    // Setup Ships for both player and computer
+    // Setup Ships for both players
     func setupShips() {
         board = Array(repeating: Array(repeating: .empty, count: 8), count: 8)
-        ships.removeAll()
-        playerShips = placeShips()
-        computerShips = placeShips()
+        player1Ships = placeShips(for: .player1)
+        player2Ships = placeShips(for: .player2)
     }
     
     // Randomly place ships on the board
-    private func placeShips() -> [Ship] {
+    private func placeShips(for player: Player) -> [Ship] {
         let shipSizes = [2, 3, 3, 4, 5]
         var placedShips: [Ship] = []
         
@@ -76,9 +80,9 @@ class Game: ObservableObject {
                 
                 if positions.allSatisfy({ board[$0.x][$0.y] == .empty }) {
                     for pos in positions {
-                        board[pos.x][pos.y] = .ship
+                        board[pos.x][pos.y] = .ship(player)
                     }
-                    let newShip = Ship(size: size, positions: positions)
+                    let newShip = Ship(size: size, positions: positions, owner: player)
                     placedShips.append(newShip)
                     placed = true
                 }
@@ -88,57 +92,47 @@ class Game: ObservableObject {
         return placedShips
     }
     
-    // Function to handle a move made by a player or computer
+    // Function to handle a move made by a player
     func makeMove(at x: Int, y: Int) {
-        guard !gameOver, board[x][y] == .empty || board[x][y] == .ship else { return }
+        guard !gameOver, board[x][y] == .empty || isShipCell(board[x][y]) else { return }
         
-        if board[x][y] == .ship {
+        if isShipCell(board[x][y]) {
             board[x][y] = .hit
         } else {
             board[x][y] = .miss
         }
         
-        checkWinCondition()
+        checkWinCondition() // Check if the current move results in a win
         
         if !gameOver {
-            switchTurn()
-            if currentPlayer == .computer {
-                performComputerMove()
-            }
+            switchTurn() // Switch turn if the game is not over
         }
     }
     
-    // Switch turns between players
+    // Helper to check if a cell contains a ship
+    private func isShipCell(_ state: CellState) -> Bool {
+        if case .ship = state {
+            return true
+        }
+        return false
+    }
+    
+    // Switch turns between Player 1 and Player 2
     private func switchTurn() {
         currentPlayer = (currentPlayer == .player1) ? .player2 : .player1
     }
     
     // Check if all ships are sunk to determine a winner
     private func checkWinCondition() {
-        if playerShips.allSatisfy({ $0.isSunk }) {
+        // Check if all Player 1's ships are sunk
+        if player1Ships.allSatisfy({ $0.isSunk }) {
             gameOver = true
-            winner = .computer
-        } else if computerShips.allSatisfy({ $0.isSunk }) {
+            winner = .player2
+        }
+        // Check if all Player 2's ships are sunk
+        else if player2Ships.allSatisfy({ $0.isSunk }) {
             gameOver = true
             winner = .player1
-        }
-    }
-    
-    // AI Logic for computer moves
-    private func performComputerMove() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self = self else { return }
-            
-            var moveMade = false
-            while !moveMade {
-                let x = Int.random(in: 0..<8)
-                let y = Int.random(in: 0..<8)
-                
-                if self.board[x][y] == .empty || self.board[x][y] == .ship {
-                    self.makeMove(at: x, y)
-                    moveMade = true
-                }
-            }
         }
     }
     
@@ -147,6 +141,6 @@ class Game: ObservableObject {
         gameOver = false
         winner = nil
         currentPlayer = .player1
-        setupShips()
+        setupShips() // Reset the board and re-place ships
     }
 }
